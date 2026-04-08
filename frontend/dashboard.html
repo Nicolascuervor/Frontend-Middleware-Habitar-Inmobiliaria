@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Panel de Asesor - Habitar Inmobiliaria">
+    <title>Habitar — Panel del Asesor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/dashboard/dashboard.css">
+</head>
+
+<body>
+
+    <!-- Top Navigation Bar -->
+    <header class="topbar">
+        <div class="topbar-brand">
+            <img src="assets/images/habitar-logo.png" alt="Habitar Inmobiliaria" class="topbar-logo">
+        </div>
+        <div class="topbar-center">
+            <h1 class="topbar-title">Panel del Asesor</h1>
+        </div>
+        <div class="topbar-actions">
+            <span id="asesor-email" class="asesor-email"></span>
+            <button id="logout-btn" class="btn-logout">Cerrar sesión</button>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="dashboard-layout">
+
+        <!-- Left Panel: Client Grid -->
+        <section class="clients-panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Mis Clientes</h2>
+                <div class="search-wrapper">
+                    <span class="search-icon"></span>
+                    <input type="search" id="search-input" class="search-input" placeholder="Buscar cliente..."
+                        aria-label="Buscar cliente" />
+                </div>
+            </div>
+
+            <!-- Loading -->
+            <div id="clients-loading" class="loading-state">
+                <div class="spinner"></div>
+                <p>Cargando clientes...</p>
+            </div>
+
+            <!-- Error -->
+            <div id="clients-error" class="error-state hidden">
+                <span>⚠</span>
+                <p id="clients-error-text">Error cargando clientes.</p>
+            </div>
+
+            <!-- Grid -->
+            <div id="clients-grid" class="clients-grid hidden"></div>
+
+            <!-- Empty -->
+            <div id="clients-empty" class="empty-state hidden">
+                <span>👥</span>
+                <p>No tienes clientes asignados aún.</p>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div id="pagination-bar" class="pagination-bar hidden">
+                <button id="btn-first" class="page-btn nav-btn" title="Primera página">«</button>
+                <button id="btn-prev" class="page-btn nav-btn" title="Anterior">‹ Anterior</button>
+                <div id="page-numbers" class="page-numbers"></div>
+                <button id="btn-next" class="page-btn nav-btn" title="Siguiente">Siguiente ›</button>
+                <button id="btn-last" class="page-btn nav-btn" title="Última página">»</button>
+                <div class="page-size-wrapper">
+                    <select id="page-size-select" class="page-size-select">
+                        <option value="10">10 por página</option>
+                        <option value="25" selected>25 por página</option>
+                        <option value="50">50 por página</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- Right Panel: Client Detail -->
+        <aside class="detail-panel">
+
+            <!-- Placeholder when no client selected -->
+            <div id="detail-placeholder" class="detail-placeholder">
+                <div class="placeholder-icon"></div>
+                <p>Selecciona un cliente para ver su información</p>
+            </div>
+
+            <!-- Client Detail Card -->
+            <div id="client-detail" class="client-detail hidden">
+
+                <!-- Client Header -->
+                <div class="client-header">
+                    <div class="client-avatar" id="client-avatar-initials"></div>
+                    <div class="client-info">
+                        <h2 id="client-name" class="client-name"></h2>
+                        <p id="client-id" class="client-id"></p>
+                    </div>
+                </div>
+
+                <!-- Listings Section -->
+                <div class="detail-section">
+                    <div class="section-header">
+                        <h3 class="section-title">Propiedades Asignadas</h3>
+                        <span id="listings-count" class="badge">0</span>
+                    </div>
+
+                    <div id="listings-list" class="listings-list">
+                        <!-- Injected dynamically -->
+                    </div>
+
+                    <div id="listings-empty" class="listings-empty hidden">
+                        <p>No hay propiedades asignadas aún.</p>
+                    </div>
+                </div>
+
+                <!-- Add Listing -->
+                <div class="detail-section">
+                    <h3 class="section-title">Agregar Propiedad</h3>
+                    <div class="add-listing-wrapper">
+                        <select id="listing-tipo" class="listing-select">
+                            <option value="VENTA">Venta</option>
+                            <option value="ALQUILER">Alquiler</option>
+                        </select>
+                        <input type="url" id="new-listing-url" class="listing-input"
+                            placeholder="https://buscador.habitarinmobiliaria.co/..." />
+                        <button id="add-listing-btn" class="btn-add-listing">
+                            <span id="add-btn-text">Agregar</span>
+                            <span id="add-btn-spinner" class="btn-spinner hidden"></span>
+                        </button>
+                    </div>
+                    <p id="add-listing-error" class="field-error hidden"></p>
+                </div>
+
+                <!-- Create Private Listing trigger -->
+                <div class="detail-section">
+                    <h3 class="section-title">Inmuebles Privados</h3>
+                    <p class="section-desc">Registra una propiedad exclusiva off-market en Airtable.</p>
+                    <button id="open-private-modal" class="btn-open-private">
+                        Crear Inmueble Privado
+                    </button>
+                </div>
+
+                <!-- Generate Link -->
+                <div class="detail-section">
+                    <h3 class="section-title">Link de Vitrina</h3>
+                    <p class="section-desc">Genera el enlace único que el cliente usará para ver sus propiedades.</p>
+                    <div class="link-preview" id="link-preview-box">
+                        <code id="vitrina-link-text" class="link-url"></code>
+                    </div>
+                    <button id="generate-link-btn" class="btn-generate-link">
+                        Copiar Link de Vitrina
+                    </button>
+                    <p id="link-copied-msg" class="link-copied hidden">¡Copiado al portapapeles! ✅</p>
+                </div>
+
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- Private Property Modal -->
+    <div id="private-modal" class="priv-modal-overlay hidden" role="dialog" aria-modal="true"
+        aria-labelledby="priv-modal-title">
+        <div class="priv-modal-content">
+
+            <!-- Modal Header -->
+            <div class="priv-modal-header">
+                <h2 id="priv-modal-title" class="priv-modal-title">Crear Inmueble Privado</h2>
+                <button id="close-private-modal" class="priv-modal-close" aria-label="Cerrar">✕</button>
+            </div>
+
+            <!-- Scrollable body -->
+            <div class="priv-modal-body">
+
+                <!-- Image Upload (Phase 1) -->
+                <div class="form-group">
+                    <label class="form-label">Imágenes <span class="form-hint">Se suben al instante al
+                            seleccionarlas</span></label>
+                    <label for="priv-images" class="file-upload-label">
+                        <span></span>
+                        <span id="file-label-text">Seleccionar fotos…</span>
+                        <input type="file" id="priv-images" accept="image/*" multiple class="file-input" />
+                    </label>
+                    <div id="upload-status" class="upload-status hidden"></div>
+                    <div id="image-previews" class="image-previews"></div>
+                </div>
+
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label class="form-label" for="priv-titulo">Título *</label>
+                        <input type="text" id="priv-titulo" class="form-input"
+                            placeholder="Ej. Apartamento en el Norte" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-tipo-negocio">Tipo de Negocio *</label>
+                        <select id="priv-tipo-negocio" class="form-input">
+                            <option value="">— Selecciona —</option>
+                            <option>Venta</option>
+                            <option>Arriendo</option>
+                            <option>Venta y Arriendo</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-precio">Precio (COP) *</label>
+                        <input type="text" id="priv-precio" class="form-input" placeholder="Ej. 450.000.000" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-admin">Valor Administración</label>
+                        <input type="text" id="priv-admin" class="form-input" placeholder="Ej. 200.000" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-tipo-inmueble">Tipo de Inmueble</label>
+                        <select id="priv-tipo-inmueble" class="form-input">
+                            <option value="">— Selecciona —</option>
+                            <option>Apartamento</option>
+                            <option>Casa</option>
+                            <option>Local Comercial</option>
+                            <option>Oficina</option>
+                            <option>Bodega</option>
+                            <option>Finca</option>
+                            <option>Lote</option>
+                            <option>Penthouse</option>
+                            <option>Otro</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-estrato">Estrato</label>
+                        <select id="priv-estrato" class="form-input">
+                            <option value="">—</option>
+                            <option>1</option>
+                            <option>2</option>
+                            <option>3</option>
+                            <option>4</option>
+                            <option>5</option>
+                            <option>6</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-habitaciones">Habitaciones</label>
+                        <input type="number" id="priv-habitaciones" class="form-input" min="0" placeholder="0" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-banos">Baños</label>
+                        <input type="number" id="priv-banos" class="form-input" min="0" placeholder="0" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-estacionamiento">Estacionamientos</label>
+                        <input type="number" id="priv-estacionamiento" class="form-input" min="0" placeholder="0" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-piso">Piso</label>
+                        <input type="number" id="priv-piso" class="form-input" min="0" placeholder="0" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-area-construida">Área Construida (m²)</label>
+                        <input type="number" id="priv-area-construida" class="form-input" min="0" step="0.1"
+                            placeholder="0" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="priv-area-privada">Área Privada (m²)</label>
+                        <input type="number" id="priv-area-privada" class="form-input" min="0" step="0.1"
+                            placeholder="0" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="priv-ubicacion">Ubicación</label>
+                    <input type="text" id="priv-ubicacion" class="form-input"
+                        placeholder="Ej. Colombia, Quindío, Armenia" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="priv-zona">Zona</label>
+                    <input type="text" id="priv-zona" class="form-input" placeholder="Ej. Norte" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="priv-direccion">Dirección</label>
+                    <input type="text" id="priv-direccion" class="form-input" placeholder="Ej. Calle 15 # 10-20" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="priv-descripcion">Descripción</label>
+                    <textarea id="priv-descripcion" class="form-input form-textarea" rows="3"
+                        placeholder="Descripción del inmueble…"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Características Internas</label>
+                    <div class="char-checkboxes" id="char-internas"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Características Externas</label>
+                    <div class="char-checkboxes" id="char-externas"></div>
+                </div>
+
+                <p id="private-form-error" class="field-error hidden"></p>
+
+            </div><!-- /.priv-modal-body -->
+
+            <!-- Sticky footer -->
+            <div class="priv-modal-footer">
+                <button id="save-private-btn" class="btn-save-private" disabled>
+                    <span id="save-private-text">Guardar Inmueble Privado</span>
+                    <span id="save-private-spinner" class="btn-spinner hidden"></span>
+                </button>
+            </div>
+
+        </div><!-- /.priv-modal-content -->
+    </div><!-- /#private-modal -->
+
+    <!-- Custom Confirmation Modal -->
+    <div id="confirm-modal" class="confirm-overlay hidden">
+        <div class="confirm-dialog">
+            <div class="confirm-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+            </div>
+            <h3 class="confirm-title" id="confirm-title">Confirmar acción</h3>
+            <p class="confirm-message" id="confirm-message"></p>
+            <div class="confirm-actions">
+                <button id="confirm-cancel-btn" class="confirm-btn confirm-btn-cancel">Cancelar</button>
+                <button id="confirm-ok-btn" class="confirm-btn confirm-btn-ok">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="js/shared/api-error-handler.js"></script>
+    <script src="js/dashboard/dashboard.js?v=2"></script>
+</body>
+
+</html>
