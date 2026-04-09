@@ -23,8 +23,10 @@ const state = {
     token:      null,
     activeTab:  'sin-revisar',
     historicoFetched: false,
-    historicoData: []
+    historicoData: [],
+    historicoPage: 1
 };
+const HISTORICO_PAGE_SIZE = 10;
 
 /**
  * Extract the numeric wasi ID from urlReferencia.
@@ -217,6 +219,11 @@ const elBadgeSin      = document.getElementById('badge-sin-revisar');
 const elBadgeApr      = document.getElementById('badge-aprobadas');
 const elBadgeDes      = document.getElementById('badge-descartadas');
 const elBadgeVis      = document.getElementById('badge-visitados');
+const elHistoricoPagination = document.getElementById('historico-pagination');
+const elHistoricoPrev = document.getElementById('historico-prev');
+const elHistoricoNext = document.getElementById('historico-next');
+const elHistoricoPageInfo = document.getElementById('historico-page-info');
+const elHistoricoLoading = document.getElementById('historico-loading');
 
 // ============================================================
 // Helpers: Phone Parsing
@@ -297,10 +304,11 @@ function renderCurrentTab() {
     // Remove previous cards
     elPropertyList.querySelectorAll('.property-card').forEach(c => c.remove());
     elEmptyState.classList.add('hidden');
+    elHistoricoPagination.classList.add('hidden');
+    elHistoricoLoading.classList.add('hidden');
 
     const tab = state.activeTab;
-
-    const filtered = tab === 'historico'
+    let filtered = tab === 'historico'
         ? state.historicoData
         : state.properties.filter(p => {
             const e = getEstado(p);
@@ -310,6 +318,22 @@ function renderCurrentTab() {
             if (tab === 'visitados')    return e === 'visitado';
             return false;
         });
+
+    if (tab === 'historico') {
+        const totalPages = Math.max(1, Math.ceil(state.historicoData.length / HISTORICO_PAGE_SIZE));
+        if (state.historicoPage > totalPages) state.historicoPage = totalPages;
+        if (state.historicoPage < 1) state.historicoPage = 1;
+
+        const start = (state.historicoPage - 1) * HISTORICO_PAGE_SIZE;
+        filtered = state.historicoData.slice(start, start + HISTORICO_PAGE_SIZE);
+
+        if (state.historicoData.length > HISTORICO_PAGE_SIZE) {
+            elHistoricoPagination.classList.remove('hidden');
+            elHistoricoPageInfo.textContent = `Página ${state.historicoPage} de ${totalPages}`;
+            elHistoricoPrev.disabled = state.historicoPage === 1;
+            elHistoricoNext.disabled = state.historicoPage === totalPages;
+        }
+    }
 
     if (filtered.length === 0) {
         showEmptyState(tab);
@@ -351,10 +375,12 @@ function renderCurrentTab() {
             const badgeSpan = metaDiv.querySelector('.history-state-badge');
             const dateSpan = metaDiv.querySelector('.history-date');
             const stateCode = normalizeHistoryState(prop._historyMeta.estadoCodigo);
+            const badgeText = stateCode === 'APROBADO' ? 'TE INTERESO' : stateCode.replace('_', ' ');
+            const badgeClass = stateCode === 'APROBADO' ? 'state-te-intereso' : `state-${stateCode.toLowerCase()}`;
 
             metaDiv.classList.remove('hidden');
-            badgeSpan.textContent = stateCode.replace('_', ' ');
-            badgeSpan.className = `history-state-badge state-${stateCode.toLowerCase()}`;
+            badgeSpan.textContent = badgeText;
+            badgeSpan.className = `history-state-badge ${badgeClass}`;
             dateSpan.textContent = formatHistoryDate(prop._historyMeta.fechaCreacion);
         }
 
@@ -451,6 +477,8 @@ function showEmptyState(tab) {
 async function loadHistoricoTab() {
     elPropertyList.querySelectorAll('.property-card').forEach(c => c.remove());
     elEmptyState.classList.add('hidden');
+    elHistoricoPagination.classList.add('hidden');
+    elHistoricoLoading.classList.remove('hidden');
     elLoadingState.classList.remove('hidden');
 
     try {
@@ -479,12 +507,15 @@ async function loadHistoricoTab() {
 
         state.historicoData = details.filter(Boolean);
         state.historicoFetched = true;
+        state.historicoPage = 1;
     } catch (e) {
         console.error('Error loading historico', e);
         state.historicoData = [];
         state.historicoFetched = true;
+        state.historicoPage = 1;
     } finally {
         elLoadingState.classList.add('hidden');
+        elHistoricoLoading.classList.add('hidden');
         renderCurrentTab();
     }
 }
@@ -918,6 +949,23 @@ document.addEventListener('keydown', e => {
         return;
     }
     if (e.key === 'Escape' && !elModal.classList.contains('hidden')) closeModal();
+});
+
+elHistoricoPrev.addEventListener('click', () => {
+    if (state.activeTab !== 'historico') return;
+    if (state.historicoPage <= 1) return;
+    state.historicoPage -= 1;
+    renderCurrentTab();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+elHistoricoNext.addEventListener('click', () => {
+    if (state.activeTab !== 'historico') return;
+    const totalPages = Math.max(1, Math.ceil(state.historicoData.length / HISTORICO_PAGE_SIZE));
+    if (state.historicoPage >= totalPages) return;
+    state.historicoPage += 1;
+    renderCurrentTab();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
 // ============================================================

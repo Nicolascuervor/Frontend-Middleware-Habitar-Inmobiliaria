@@ -72,6 +72,55 @@ body::before {
     font-weight: 500;
 }
 
+.historico-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.hist-page-btn {
+    border: 1px solid var(--border-color);
+    background: #fff;
+    color: var(--text-primary);
+    font-family: var(--font-family);
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+}
+
+.hist-page-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.hist-page-info {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.historico-loading {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 16px;
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    color: var(--text-secondary);
+    gap: 8px;
+}
+
+.historico-loading .spinner {
+    margin: 0;
+}
+
 /* Layout System */
 .app-layout {
     max-width: 1400px;
@@ -322,6 +371,11 @@ body::before {
 .history-state-badge.state-aprobado {
     background: #DCFCE7;
     color: #166534;
+}
+
+.history-state-badge.state-te-intereso {
+    background: #FEF3C7;
+    color: #92400E;
 }
 
 .history-state-badge.state-descartado {
@@ -594,14 +648,20 @@ body::before {
     }
 
     /* Header */
+    .header-text {
+        text-align: center;
+    }
+
     .content-header h1 {
         font-size: 1.4rem;
         letter-spacing: -0.01em;
+        text-align: center;
     }
 
     .content-header p {
         font-size: 0.92rem;
         word-break: break-word;
+        text-align: center;
     }
 
     /* ── Tabs: 2 columns × 2 rows ── */
@@ -673,6 +733,8 @@ body::before {
         width: 100%;
         margin-left: 0;
         margin-top: 8px;
+        text-align: center;
+        justify-content: center;
     }
 
     /* Property cards */

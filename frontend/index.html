@@ -60,6 +60,10 @@
 
         <!-- Main Content: Properties (full width grid) -->
         <div id="property-list" class="property-scroll-container">
+            <div id="historico-loading" class="historico-loading hidden">
+                <div class="spinner"></div>
+                <p>Cargando histórico de inmuebles...</p>
+            </div>
             <!-- Loading State: Skeleton Cards -->
             <div id="loading-state" class="loading-container">
                 <article class="property-card skeleton-card" aria-hidden="true">
@@ -97,6 +101,11 @@
                 <h2 id="empty-title">Sin propiedades</h2>
                 <p id="empty-desc">No hay propiedades en esta sección.</p>
             </div>
+        </div>
+        <div id="historico-pagination" class="historico-pagination hidden">
+            <button id="historico-prev" type="button" class="hist-page-btn">Anterior</button>
+            <span id="historico-page-info" class="hist-page-info">Página 1 de 1</span>
+            <button id="historico-next" type="button" class="hist-page-btn">Siguiente</button>
         </div>
     </div>
 
