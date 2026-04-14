@@ -2,7 +2,7 @@
 // Centralized API Error Handler
 // ============================================================
 // Parses backend error responses and throws user-friendly errors.
-// Handles: 400, 401, 403, 404, 429, 500, 502
+// Handles: 400, 401, 403, 404, 429, 500, 502, 503
 
 /**
  * Parses the backend JSON response body safely.
@@ -39,7 +39,6 @@ function extractMessage(body) {
 /**
  * Main error handler — call after a failed fetch response.
  * Throws an Error with the appropriate user-facing message.
- * For 401, clears auth and redirects to login.
  * For 429, dispatches 'rate-limited' event on window.
  */
 async function handleApiError(res) {
@@ -52,9 +51,9 @@ async function handleApiError(res) {
             throw new Error(backendMsg || 'Datos de entrada inválidos.');
 
         case 401:
-            localStorage.removeItem('auth_token');
-            window.location.href = 'login.html';
-            throw new Error('Sesión expirada. Redirigiendo al login...');
+            throw new Error(
+                backendMsg || 'No autorizado. Verifica que el enlace de la vitrina sea válido.'
+            );
 
         case 403:
             throw new Error('No tienes permisos para esta acción.');
@@ -73,6 +72,9 @@ async function handleApiError(res) {
 
         case 502:
             throw new Error('Servicio temporalmente no disponible, intente más tarde.');
+
+        case 503:
+            throw new Error(backendMsg || 'Servicio temporalmente no disponible. Intenta de nuevo en unos momentos.');
 
         default:
             throw new Error(backendMsg || `Error inesperado (${status}).`);

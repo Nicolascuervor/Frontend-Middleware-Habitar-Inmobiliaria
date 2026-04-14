@@ -27,6 +27,11 @@ const state = {
     historicoPage: 1
 };
 const HISTORICO_PAGE_SIZE = 10;
+const VITRINA_FETCH_ATTEMPTS = 3;
+const VITRINA_503_MAX_RETRIES = 5;
+const VITRINA_503_BACKOFF_MS = 500;
+const VITRINA_SESSION_PREFIX = 'vitrina_last_ok_';
+const VITRINA_304_MAX_DEPTH = 3;
 
 /**
  * Extract the numeric wasi ID from urlReferencia.
@@ -38,19 +43,123 @@ function extractWasiId(prop) {
     return segment.replace(/-[A-Z_]+$/, '');       // "9798229"
 }
 
+/**
+ * Extract a property identifier from URL.
+ * Supports:
+ * - SEO Wasi URLs: /casa-venta-zona/8116766
+ * - Private URLs:  /venta/6e0e775d
+ * - State suffixes: /8116766-APROBADO, /venta/6e0e775d-DESCARTADO
+ */
+function extractPropertyIdFromUrl(url) {
+    const raw = String(url || '').trim();
+    if (!raw) return '';
+
+    try {
+        const parsed = new URL(raw);
+        const parts = parsed.pathname.split('/').filter(Boolean);
+        if (parts.length >= 2 && parts[parts.length - 2].toLowerCase() === 'venta') {
+            return parts[parts.length - 1].replace(/-(APROBADO|DESCARTADO|VISITADO|REVISADO)$/i, '');
+        }
+        const lastPart = parts[parts.length - 1] || '';
+        return lastPart.replace(/-(APROBADO|DESCARTADO|VISITADO|REVISADO)$/i, '');
+    } catch {
+        const clean = raw.replace(/\/+$/, '');
+        const idxVenta = clean.toLowerCase().lastIndexOf('/venta/');
+        if (idxVenta >= 0) {
+            return clean.slice(idxVenta + '/venta/'.length).replace(/-(APROBADO|DESCARTADO|VISITADO|REVISADO)$/i, '');
+        }
+        return clean.split('/').pop().replace(/-(APROBADO|DESCARTADO|VISITADO|REVISADO)$/i, '');
+    }
+}
+
+function getHistoryPropertyId(item) {
+    if (!item) return '';
+    const directCode = String(item.codigoNumerico || '').trim();
+    if (directCode) return directCode;
+    const fromUrl = extractPropertyIdFromUrl(item.url || item.urlReferencia || item.urlInmueble || '');
+    return String(fromUrl || '').trim();
+}
+
 // ============================================================
 // API Service
 // ============================================================
 const detailCache = new Map();
 let detailAbortCtrl = null;
 
+function loadVitrinaSessionCache(token) {
+    try {
+        const raw = sessionStorage.getItem(VITRINA_SESSION_PREFIX + token);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+}
+
+function saveVitrinaSessionCache(token, data) {
+    try {
+        sessionStorage.setItem(VITRINA_SESSION_PREFIX + token, JSON.stringify(data));
+    } catch {
+        /* quota u otro */
+    }
+}
+
+async function readResponseJsonOrEmpty(res) {
+    const text = await res.text();
+    if (!text) return { inmuebles: [], asesor: {} };
+    try {
+        return JSON.parse(text);
+    } catch {
+        return { inmuebles: [], asesor: {} };
+    }
+}
+
+/**
+ * Una petición GET a vitrina. Contrato backend:
+ * - 200: lista completa (totalInmuebles === inmuebles.length cuando viene totalInmuebles).
+ * - 503: degradación; mismo JSON posible con inmuebles.length < totalInmuebles (no tratar como completa).
+ * - 304: sin cuerpo; usar último 200 válido en sessionStorage o forzar nueva representación.
+ */
+async function vitrinaFetchOnce(token, { cacheBust = false, allowHttpCache = true } = {}, depth304 = 0) {
+    const url = cacheBust
+        ? `${API_BASE}/${token}?_ts=${Date.now()}`
+        : `${API_BASE}/${token}`;
+
+    const fetchOpts = { headers: TUNNEL_HEADERS };
+    if (!allowHttpCache) fetchOpts.cache = 'no-store';
+
+    const res = await fetch(url, fetchOpts);
+
+    if (res.status === 304) {
+        const cached = loadVitrinaSessionCache(token);
+        if (cached) return { outcome: 'ok', data: cached };
+        if (depth304 >= VITRINA_304_MAX_DEPTH) {
+            throw new Error('Vitrina: respuesta 304 sin cuerpo y sin datos en caché local. Recarga la página.');
+        }
+        return vitrinaFetchOnce(token, { cacheBust: true, allowHttpCache: false }, depth304 + 1);
+    }
+
+    if (res.status === 503) {
+        const data = await readResponseJsonOrEmpty(res);
+        return { outcome: 'partial', data };
+    }
+
+    if (!res.ok) await handleApiError(res);
+
+    const data = await readResponseJsonOrEmpty(res);
+    return { outcome: 'ok', data };
+}
+
 const api = {
-    async getVitrina(token) {
-        const res = await fetch(`${API_BASE}/${token}`, {
-            headers: TUNNEL_HEADERS
-        });
-        if (!res.ok) await handleApiError(res);
-        return res.json();
+    async getVitrina(token, options = {}) {
+        const r = await vitrinaFetchOnce(token, options);
+        if (r.outcome === 'partial') {
+            const err = new Error('VITRINA_503');
+            err.code = 'VITRINA_503';
+            err.partialData = r.data;
+            throw err;
+        }
+        return r.data;
     },
 
     async getHistorico(token) {
@@ -187,17 +296,128 @@ function normalizeHistoryState(estadoCodigo) {
 function getLatestHistoryByProperty(histData) {
     const latestByCode = new Map();
     (histData || []).forEach(item => {
-        if (!item || !item.codigoNumerico) return;
-        const prev = latestByCode.get(item.codigoNumerico);
+        const propertyId = getHistoryPropertyId(item);
+        if (!propertyId) return;
+
+        const prev = latestByCode.get(propertyId);
         if (!prev) {
-            latestByCode.set(item.codigoNumerico, item);
+            latestByCode.set(propertyId, { ...item, _propertyId: propertyId });
             return;
         }
         const prevTs = Date.parse(prev.fechaCreacion || 0) || 0;
         const currTs = Date.parse(item.fechaCreacion || 0) || 0;
-        if (currTs >= prevTs) latestByCode.set(item.codigoNumerico, item);
+        if (currTs >= prevTs) latestByCode.set(propertyId, { ...item, _propertyId: propertyId });
     });
     return Array.from(latestByCode.values());
+}
+
+function normalizePropertyItem(item, index) {
+    if (!item || typeof item !== 'object') {
+        return {
+            id: `unknown-${index}`,
+            titulo: 'Inmueble sin información completa',
+            ubicacion: '',
+            descripcionCorta: '',
+            imagenUrl: '',
+            urlReferencia: '',
+            estado: ''
+        };
+    }
+    return item;
+}
+
+function normalizePropertiesList(inmuebles) {
+    if (!Array.isArray(inmuebles)) return [];
+    return inmuebles.map((item, index) => normalizePropertyItem(item, index));
+}
+
+function getDeclaredPropertyCount(data) {
+    const candidates = [data?.totalInmuebles, data?.cantidadInmuebles, data?.total];
+    for (const v of candidates) {
+        const n = Number(v);
+        if (Number.isFinite(n) && n >= 0) return n;
+    }
+    return null;
+}
+
+/** true si no hay total declarado (legacy) o si cumple totalInmuebles === inmuebles.length */
+function isVitrinaPayloadComplete(data) {
+    const total = getDeclaredPropertyCount(data);
+    const len = Array.isArray(data?.inmuebles) ? data.inmuebles.length : 0;
+    if (total === null) return true;
+    if (len !== total) {
+        console.warn('[Vitrina] Contrato: totalInmuebles !== inmuebles.length', { totalInmuebles: total, length: len });
+        return false;
+    }
+    return true;
+}
+
+function logVitrina200OptionalCheck(data) {
+    if (!data || !Array.isArray(data.inmuebles)) return;
+    const total = getDeclaredPropertyCount(data);
+    if (total === null) return;
+    if (data.inmuebles.length !== total) {
+        console.warn('[Vitrina] 200 OK pero totalInmuebles no coincide con length (no debería ocurrir).', {
+            totalInmuebles: total,
+            length: data.inmuebles.length
+        });
+    }
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function maybeVerifyWhenNoDeclaredTotal(token, data) {
+    if (getDeclaredPropertyCount(data) !== null) return data;
+
+    const verify = await vitrinaFetchOnce(token, { cacheBust: true, allowHttpCache: false });
+    if (verify.outcome === 'partial') return data;
+
+    const dLen = Array.isArray(data?.inmuebles) ? data.inmuebles.length : 0;
+    const vLen = Array.isArray(verify.data?.inmuebles) ? verify.data.inmuebles.length : 0;
+    if (vLen > dLen) return verify.data;
+    return data;
+}
+
+/**
+ * Carga vitrina cumpliendo contrato backend: 503 → reintentar con backoff; 200 incompleto vs totalInmuebles → reintentar;
+ * primer intento híbrido (caché HTTP); sin total declarado → verificación opcional legacy.
+ */
+async function fetchMostCompleteVitrinaData(token) {
+    let backoff = VITRINA_503_BACKOFF_MS;
+    const maxRounds = Math.max(VITRINA_503_MAX_RETRIES, VITRINA_FETCH_ATTEMPTS + 2);
+
+    for (let i = 0; i < maxRounds; i++) {
+        const useHttpCache = i === 0;
+        const r = await vitrinaFetchOnce(token, {
+            cacheBust: !useHttpCache,
+            allowHttpCache: useHttpCache
+        });
+
+        if (r.outcome === 'partial') {
+            console.warn('[Vitrina] 503 — respuesta degradada, reintentando con backoff…', { intento: i + 1 });
+            await sleep(backoff);
+            backoff = Math.min(backoff * 2, 10000);
+            continue;
+        }
+
+        const data = r.data;
+        logVitrina200OptionalCheck(data);
+
+        if (isVitrinaPayloadComplete(data)) {
+            saveVitrinaSessionCache(token, data);
+            return await maybeVerifyWhenNoDeclaredTotal(token, data);
+        }
+
+        // 200 (u ok) pero totalInmuebles no coincide con length: reintentar sin caché
+        console.warn('[Vitrina] Lista incoherente con totalInmuebles, reintentando sin caché…', { intento: i + 1 });
+        await sleep(Math.min(300 * (i + 1), 2000));
+    }
+
+    throw new Error(
+        'La vitrina no está disponible por completo en este momento (servicio degradado). Intenta de nuevo en unos minutos.'
+    );
 }
 
 // ============================================================
@@ -364,7 +584,7 @@ function renderCurrentTab() {
         card.querySelector('.property-location').innerHTML = `📍 ${prop.ubicacion || ''}`;
         card.querySelector('.property-description').textContent = prop.descripcionCorta || '';
 
-        const openDetail = () => openPropertyDetail(prop.id);
+        const openDetail = () => openPropertyDetail(prop);
         card.querySelector('.property-image-wrapper').addEventListener('click', openDetail);
         card.querySelector('.property-image-wrapper').style.cursor = 'pointer';
         card.querySelector('.property-title').addEventListener('click', openDetail);
@@ -487,11 +707,14 @@ async function loadHistoricoTab() {
 
         const details = await Promise.all(latestRecords.map(async item => {
             try {
-                const pDetail = await api.getPropertyDetail(state.token, item.codigoNumerico);
+                const propertyId = item._propertyId || getHistoryPropertyId(item);
+                if (!propertyId) return null;
+
+                const pDetail = await api.getPropertyDetail(state.token, propertyId);
                 if (!pDetail) return null;
                 return {
                     ...pDetail,
-                    id: item.codigoNumerico,
+                    id: propertyId,
                     imagenUrl: (pDetail.galeriasImagenes && pDetail.galeriasImagenes.length > 0) ? pDetail.galeriasImagenes[0] : '',
                     descripcionCorta: pDetail.observaciones || pDetail.descripcionCorta || '',
                     precioFormateado: pDetail.precioFormateado || (pDetail.precio ? `$${Number(pDetail.precio).toLocaleString('es-CO')}` : ''),
@@ -500,7 +723,7 @@ async function loadHistoricoTab() {
                     _historyMeta: item
                 };
             } catch (err) {
-                console.warn('Could not fetch detail for historico item', item.codigoNumerico, err);
+                console.warn('Could not fetch detail for historico item', item._propertyId || item.codigoNumerico, err);
                 return null;
             }
         }));
@@ -523,6 +746,23 @@ async function loadHistoricoTab() {
 // ============================================================
 // Action Handler (Aprobar / Descartar)
 // ============================================================
+function findPropertyInStateById(id) {
+    const sid = String(id);
+    return state.properties.find(p => String(p.id) === sid)
+        || state.historicoData.find(p => String(p.id) === sid)
+        || null;
+}
+
+async function applyEstadoChange(propRef, action, url) {
+    if (action === 'aprobar') {
+        await api.aprobar(state.token, url);
+        if (propRef) propRef.estado = 'APROBADO';
+    } else {
+        await api.descartar(state.token, url);
+        if (propRef) propRef.estado = 'DESCARTADO';
+    }
+}
+
 async function handleAction(prop, card, action, url) {
     if (card.classList.contains('processing')) return;
     card.classList.add('processing');
@@ -531,13 +771,7 @@ async function handleAction(prop, card, action, url) {
     card.querySelectorAll('button').forEach(b => b.disabled = true);
 
     try {
-        if (action === 'aprobar') {
-            await api.aprobar(state.token, url);
-            prop.estado = 'APROBADO';
-        } else {
-            await api.descartar(state.token, url);
-            prop.estado = 'DESCARTADO';
-        }
+        await applyEstadoChange(prop, action, url);
 
         // Animate removal from current tab
         await animateRemoval(card, action === 'aprobar' ? 'right' : 'left');
@@ -581,17 +815,84 @@ function showToast(msg) {
 // ============================================================
 // Modal: Property Detail
 // ============================================================
-function openPropertyDetail(wasiId) {
+function openPropertyDetail(propOrId) {
+    const listProp = typeof propOrId === 'object' && propOrId !== null
+        ? propOrId
+        : findPropertyInStateById(propOrId);
+    const propertyId = listProp?.id ?? propOrId;
+
     elModalBody.innerHTML = '<div class="modal-loading"><div class="spinner"></div><p>Cargando detalles...</p></div>';
     elModal.classList.remove('hidden');
     elModal.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';   // freeze background scroll
 
-    api.getPropertyDetail(state.token, wasiId, { cancelPrevious: true })
-        .then(d => { elModalBody.innerHTML = buildDetailHTML(d); initGallery(); })
+    api.getPropertyDetail(state.token, propertyId, { cancelPrevious: true })
+        .then(d => {
+            elModalBody.innerHTML = buildDetailHTML(d);
+            initGallery();
+            initModalDetailFooter(d, listProp);
+        })
         .catch(() => {
             elModalBody.innerHTML = '<p class="modal-error">Error cargando el detalle del inmueble.</p>';
         });
+}
+
+/**
+ * Pie del modal: mismas acciones que en la tarjeta según pestaña (no en histórico ni visitados).
+ */
+function initModalDetailFooter(detail, listProp) {
+    const footer = document.getElementById('modal-detail-footer');
+    if (!footer) return;
+
+    const tab = state.activeTab;
+    if (tab === 'historico' || tab === 'visitados') {
+        footer.classList.add('hidden');
+        footer.innerHTML = '';
+        footer.classList.remove('processing');
+        return;
+    }
+
+    const url = (detail.urlReferencia || detail.url || listProp?.urlReferencia || listProp?.url || '').trim();
+    if (!url) {
+        footer.classList.add('hidden');
+        footer.innerHTML = '';
+        footer.classList.remove('processing');
+        return;
+    }
+
+    const id = String(listProp?.id ?? detail?.id ?? '').trim();
+    const stateTarget = id ? state.properties.find(p => String(p.id) === id) : null;
+
+    footer.classList.remove('hidden', 'processing');
+    footer.innerHTML = '';
+
+    const run = async action => {
+        if (footer.classList.contains('processing')) return;
+        footer.classList.add('processing');
+        footer.querySelectorAll('button').forEach(b => { b.disabled = true; });
+        try {
+            await applyEstadoChange(stateTarget, action, url);
+            closeModal();
+            updateBadges();
+            renderCurrentTab();
+        } catch (err) {
+            console.error('Modal action failed:', err);
+            showToast('⚠ Hubo un problema, intenta de nuevo.');
+            footer.classList.remove('processing');
+            footer.querySelectorAll('button').forEach(b => { b.disabled = false; });
+        }
+    };
+
+    if (tab === 'sin-revisar') {
+        footer.appendChild(makeBtn('discard', '✕ Descartar', () => run('descartar')));
+        footer.appendChild(makeBtn('approve', '⭐ Me interesa', () => run('aprobar')));
+    } else if (tab === 'aprobadas') {
+        footer.appendChild(makeBtn('discard', '✕ Descartar', () => run('descartar')));
+    } else if (tab === 'descartadas') {
+        footer.appendChild(makeBtn('approve', '⭐ Me interesa nuevamente', () => run('aprobar')));
+    } else {
+        footer.classList.add('hidden');
+    }
 }
 
 function buildPriceBlock(d) {
@@ -718,6 +1019,8 @@ function buildDetailHTML(d) {
           <div class="char-grid">${checkList(d.caracteristicasExternas)}</div>
         </section>` : ''}
       </div>
+
+      <footer class="modal-detail-footer hidden" id="modal-detail-footer" aria-label="Acciones sobre el inmueble"></footer>
     `;
 }
 
@@ -1005,9 +1308,9 @@ async function init() {
     console.log(`Vitrina token: ${state.token}`);
 
     try {
-        const data       = await api.getVitrina(state.token);
-        state.agent      = data.asesor    || {};
-        state.properties = data.inmuebles || [];
+        const data       = await fetchMostCompleteVitrinaData(state.token);
+        state.agent      = data.asesor || {};
+        state.properties = normalizePropertiesList(data.inmuebles);
 
         elLoadingState.classList.add('hidden');
 
@@ -1021,7 +1324,10 @@ async function init() {
         elEmptyState.classList.remove('hidden');
         elEmptyIcon.textContent  = '⚠️';
         elEmptyTitle.textContent = 'Error al cargar';
-        elEmptyDesc.textContent  = 'No pudimos cargar la vitrina. Verifica tu conexión o el enlace.';
+        const degraded = err && err.message && String(err.message).includes('no está disponible por completo');
+        elEmptyDesc.textContent = degraded
+            ? err.message
+            : 'No pudimos cargar la vitrina. Verifica tu conexión o el enlace.';
     }
 }
 

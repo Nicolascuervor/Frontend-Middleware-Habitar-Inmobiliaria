@@ -1115,6 +1115,9 @@ body::before {
     overflow-x: hidden;
     flex: 1;
     min-height: 0;
+    -webkit-overflow-scrolling: touch;
+    /* Espacio al final del scroll para que el pie no quede bajo el home indicator */
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
 }
 
 .modal-loading {
@@ -1399,9 +1402,59 @@ body::before {
 
 /* Bottom characteristics row */
 .modal-chars-row {
-    padding: 20px 28px 28px;
-    margin: 0 12px 12px 12px;
+    padding: 20px 28px 20px;
+    margin: 0 12px 0 12px;
     border-top: 1px solid var(--border-color);
+}
+
+/* Modal detail: acciones al final del contenido (scroll; no sticky/fijo) */
+.modal-detail-footer {
+    position: static;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    padding: 10px 10px max(12px, env(safe-area-inset-bottom, 0px));
+    margin: 14px 0 0;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-color);
+}
+
+.modal-detail-footer .btn {
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: min(220px, calc(50% - 4px));
+    /* ~mitad del tamaño visual respecto a las acciones de tarjeta */
+    padding: 5px 10px;
+    font-size: 0.74rem;
+    line-height: 1.25;
+    min-height: 0;
+    border-radius: var(--radius-full);
+}
+
+.modal-detail-footer.processing .btn {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+    .modal-detail-footer {
+        flex-direction: column;
+        align-items: stretch;
+        padding-left: max(10px, env(safe-area-inset-left, 0px));
+        padding-right: max(10px, env(safe-area-inset-right, 0px));
+        margin-top: 12px;
+    }
+
+    .modal-detail-footer .btn {
+        max-width: none;
+        width: 100%;
+    }
 }
 
 /* ---- Detail sections ---- */

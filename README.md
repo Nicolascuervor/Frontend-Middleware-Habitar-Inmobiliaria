@@ -33,8 +33,6 @@ frontend/
   js/
     shared/
       api-error-handler.js
-    login/
-      login.js
 ```
 
 ## Requisitos
