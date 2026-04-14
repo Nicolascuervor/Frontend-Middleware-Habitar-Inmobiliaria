@@ -931,10 +931,140 @@ function buildPriceBlock(d) {
  * e.g. "https://static-cf.wasi.co/…/image_340x…" → "https://static-cf.wasi.co/…/image…"
  * This lets the browser request the original full-resolution file.
  */
+function transformWasiImageUrl(src, { minWidth, minHeight, maxWidth, maxHeight } = {}) {
+    try {
+        const url = new URL(src, window.location.origin);
+        if (url.hostname !== 'image.wasi.co') return src;
+
+        const encodedPayload = url.pathname.replace(/^\/+/, '');
+        if (!encodedPayload) return src;
+
+        const decodeBase64Url = (value) => {
+            const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+            const padding = '='.repeat((4 - (normalized.length % 4)) % 4);
+            return atob(normalized + padding);
+        };
+
+        const encodeBase64Url = (value) =>
+            btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+
+        const payload = JSON.parse(decodeBase64Url(encodedPayload));
+        payload.edits = payload.edits || {};
+        payload.edits.resize = payload.edits.resize || {};
+
+        const currentWidth = Number(payload.edits.resize.width) || 0;
+        const currentHeight = Number(payload.edits.resize.height) || 0;
+        let nextWidth = currentWidth;
+        let nextHeight = currentHeight;
+
+        if (typeof minWidth === 'number') nextWidth = Math.max(nextWidth || 0, minWidth);
+        if (typeof minHeight === 'number') nextHeight = Math.max(nextHeight || 0, minHeight);
+        if (typeof maxWidth === 'number') nextWidth = nextWidth ? Math.min(nextWidth, maxWidth) : maxWidth;
+        if (typeof maxHeight === 'number') nextHeight = nextHeight ? Math.min(nextHeight, maxHeight) : maxHeight;
+
+        payload.edits.resize.width = nextWidth || currentWidth || 900;
+        payload.edits.resize.height = nextHeight || currentHeight || 675;
+        payload.edits.resize.fit = payload.edits.resize.fit || 'contain';
+
+        url.pathname = '/' + encodeBase64Url(JSON.stringify(payload));
+        return url.toString();
+    } catch {
+        return src;
+    }
+}
+
 function getHighQualityUrl(src) {
     if (!src) return src;
-    // Remove common Wasi size suffixes like _340x, _640x, _1024x, etc.
+
+    const transformed = transformWasiImageUrl(src, { minWidth: 2400, minHeight: 1800 });
+    if (transformed !== src) return transformed;
+
+    // Fallback for old static-cf.wasi.co style suffixes (_340x, _640x, etc.)
     return src.replace(/_\d+x(?=\.|$)/g, '');
+}
+
+function getLowQualityUrl(src) {
+    if (!src) return src;
+
+    // Small, fast preview while HQ is fetched in background.
+    const transformed = transformWasiImageUrl(src, { maxWidth: 700, maxHeight: 520 });
+    if (transformed !== src) return transformed;
+    return src;
+}
+
+const imageLoadCache = new Map();
+
+function preloadImage(src) {
+    if (!src) return Promise.reject(new Error('src vacío'));
+    if (imageLoadCache.has(src)) return imageLoadCache.get(src);
+
+    const p = new Promise((resolve, reject) => {
+        const img = new Image();
+        img.decoding = 'async';
+        img.onload = () => resolve(src);
+        img.onerror = reject;
+        img.src = src;
+    });
+    imageLoadCache.set(src, p);
+    return p;
+}
+
+function progressiveRenderImage(imgEl, originalSrc, { renderToken, useContainSizes = false } = {}) {
+    if (!imgEl || !originalSrc) return;
+    const lowSrc = getLowQualityUrl(originalSrc);
+    const hqSrc = getHighQualityUrl(originalSrc);
+
+    const token = renderToken || `${Date.now()}-${Math.random()}`;
+    imgEl.dataset.renderToken = token;
+    imgEl.src = lowSrc;
+    imgEl.removeAttribute('srcset');
+    imgEl.style.filter = 'blur(2px)';
+    imgEl.style.transition = 'filter 220ms ease, opacity 220ms ease, transform 220ms ease';
+    if (useContainSizes) imgEl.sizes = '100vw';
+
+    if (!hqSrc || hqSrc === lowSrc) {
+        imgEl.style.filter = 'none';
+        return;
+    }
+
+    preloadImage(hqSrc).then(() => {
+        if (imgEl.dataset.renderToken !== token) return;
+        imgEl.src = hqSrc;
+        imgEl.style.filter = 'none';
+    }).catch(() => {
+        if (imgEl.dataset.renderToken !== token) return;
+        imgEl.style.filter = 'none';
+    });
+}
+
+/**
+ * Frontend-only quality helper:
+ * - Keeps current URL as baseline
+ * - Adds HQ candidate (if different) through srcset
+ * - Lets browser pick best file for DPR/screen size
+ */
+function applyBestEffortImageQuality(imgEl, src, { sizes = '100vw' } = {}) {
+    if (!imgEl || !src) return;
+    const hq = getHighQualityUrl(src);
+    imgEl.src = src;
+    imgEl.sizes = sizes;
+
+    if (hq && hq !== src) {
+        imgEl.srcset = `${src} 1x, ${hq} 2x`;
+    } else {
+        imgEl.removeAttribute('srcset');
+    }
+}
+
+function preloadGalleryImages(images) {
+    (images || []).forEach((src) => {
+        if (!src) return;
+        const img = new Image();
+        img.decoding = 'async';
+        img.src = src;
+        const hq = getHighQualityUrl(src);
+        if (hq && hq !== src) preloadImage(hq).catch(() => {});
+    });
 }
 
 function buildDetailHTML(d) {
@@ -985,7 +1115,7 @@ function buildDetailHTML(d) {
           <div class="carousel-viewport">
             <div class="carousel-track" id="carousel-track">
               ${imgs.map((src, i) =>
-                `<div class="carousel-slide" data-img-index="${i}"><img src="${src}" alt="${d.titulo || ''} - Foto ${i+1}" class="carousel-img" loading="lazy"></div>`
+                `<div class="carousel-slide" data-img-index="${i}"><img src="${src}" alt="${d.titulo || ''} - Foto ${i+1}" class="carousel-img" loading="eager"></div>`
               ).join('')}
             </div>
             <button class="gallery-arrow gallery-prev" aria-label="Anterior">&#8249;</button>
@@ -1040,6 +1170,16 @@ function initGallery() {
             galleryImages = JSON.parse(decodeURIComponent(twoColEl.dataset.galleryImages));
         } catch (e) { /* ignore */ }
     }
+
+    // Prioridad en modal: render inmediato sin bloquear por variante HQ.
+    slides.forEach((slide) => {
+        const idx = parseInt(slide.dataset.imgIndex || '0', 10);
+        const slideImg = slide.querySelector('.carousel-img');
+        const src = galleryImages[idx] || slideImg?.getAttribute('src');
+        if (!slideImg || !src) return;
+        progressiveRenderImage(slideImg, src, { renderToken: `carousel-${idx}` });
+    });
+    preloadGalleryImages(galleryImages);
 
     function show(i) {
         current = ((i % total) + total) % total;
@@ -1173,33 +1313,20 @@ function lightboxShowImage(index) {
 
     const img = lightboxEl.querySelector('.lightbox-img');
     const src = lightboxState.images[lightboxState.current];
+    const currentIndexSnapshot = lightboxState.current;
 
     // Use highest quality URL
     const hqSrc = getHighQualityUrl(src);
 
-    // Fade out, swap, fade in
+    // Carga progresiva: preview rápida y reemplazo a HQ en cuanto esté disponible.
     img.style.opacity = '0';
     img.style.transform = 'scale(0.92)';
-
-    setTimeout(() => {
-        img.src = hqSrc;
-        img.alt = `Imagen ${lightboxState.current + 1} de ${total}`;
-
-        // Once loaded, reveal
-        img.onload = () => {
-            img.style.opacity = '1';
-            img.style.transform = 'scale(1)';
-        };
-
-        // Fallback: if the HQ URL fails, fall back to original
-        img.onerror = () => {
-            if (img.src !== src) {
-                img.src = src;
-            }
-            img.style.opacity = '1';
-            img.style.transform = 'scale(1)';
-        };
-    }, 150);
+    img.alt = `Imagen ${lightboxState.current + 1} de ${total}`;
+    progressiveRenderImage(img, src, { renderToken: `lightbox-${currentIndexSnapshot}`, useContainSizes: true });
+    requestAnimationFrame(() => {
+        img.style.opacity = '1';
+        img.style.transform = 'scale(1)';
+    });
 
     // Update counter
     const counter = lightboxEl.querySelector('#lightbox-counter');
