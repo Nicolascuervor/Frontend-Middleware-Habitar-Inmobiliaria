@@ -1,0 +1,8 @@
+{
+    "rewrites": [
+      {
+        "source": "/vitrina/:token",
+        "destination": "/pages/vitrina.html"
+      }
+    ]
+  }
