@@ -28,9 +28,14 @@ Permite visualizar inmuebles, cambiar su estado (me interesa / descartado), ver 
 ```text
 frontend/
   index.html
-  main.js
-  style.css
+  pages/
+    vitrina.html
+  css/
+    vitrina/
+      vitrina.css
   js/
+    vitrina/
+      vitrina.js
     shared/
       api-error-handler.js
 ```
@@ -42,17 +47,17 @@ frontend/
 
 ## Ejecución local
 
-Como es un frontend estático, puedes abrir `frontend/index.html` directamente o servirlo con un servidor local.
+Como es un frontend estático, puedes abrir `frontend/pages/vitrina.html` directamente o servirlo con un servidor local.
 
 Ejemplo con VS Code + Live Server:
 
 1. Abre la carpeta del proyecto.
-2. Haz clic derecho sobre `frontend/index.html`.
+2. Haz clic derecho sobre `frontend/pages/vitrina.html`.
 3. Selecciona **Open with Live Server**.
 
 ## Configuración y datos
 
-En `frontend/main.js` se encuentran constantes de configuración:
+En `frontend/js/vitrina/vitrina.js` se encuentran constantes de configuración:
 
 - `API_BASE`: endpoint principal de vitrina.
 - `DEFAULT_TOKEN`: token por defecto para pruebas.

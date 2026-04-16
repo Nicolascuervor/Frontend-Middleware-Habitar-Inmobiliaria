@@ -52,7 +52,7 @@ body::before {
     left: 0;
     width: 100%;
     height: 100%;
-    background-image: url('assets/images/habitar-logo.png');
+    background-image: url('../../assets/images/habitar-logo.png');
     background-repeat: no-repeat;
     background-position: center;
     background-size: min(78vw, 980px);

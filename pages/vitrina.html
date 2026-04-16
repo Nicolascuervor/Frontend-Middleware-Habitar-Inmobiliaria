@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Vitrina Inmobiliaria - Habitar</title>
+    <meta name="description" content="Vitrina inmobiliaria personalizada.">
+    <link rel="stylesheet" href="../css/vitrina/vitrina.css?cb=999">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-layout">
+        <!-- Header -->
+        <header class="content-header">
+            <!-- Top row: Title + Agent -->
+            <div class="header-top">
+                <div class="header-text">
+                    <h1>Vitrina Inmobiliaria</h1>
+                    <p>Revisa las propiedades seleccionadas para ti y gestiona tu interés.</p>
+                </div>
+                <!-- Agent Profile (compact, inline with title) -->
+                <aside class="sidebar">
+                    <div class="agent-card" id="agent-profile">
+                        <h2 class="agent-card-title">TU ASESOR ENCARGADO</h2>
+                        <!-- Skeleton for Agent -->
+                        <div class="skeleton-line"
+                            style="width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 10px;"></div>
+                        <div class="skeleton-line" style="width: 60%; margin: 0 auto 6px;"></div>
+                        <div class="skeleton-line" style="width: 40%; margin: 0 auto;"></div>
+                    </div>
+                </aside>
+            </div>
+            <!-- Tab Navigation (full width below) -->
+            <nav class="tab-nav" role="tablist" aria-label="Secciones de propiedades">
+                <button class="tab-btn active" data-tab="sin-revisar" role="tab" aria-selected="true">
+                    Sin revisar
+                    <span class="tab-badge" id="badge-sin-revisar">0</span>
+                </button>
+                <button class="tab-btn" data-tab="aprobadas" role="tab" aria-selected="false">
+                    Me interesa
+                    <span class="tab-badge tab-badge--yellow" id="badge-aprobadas">0</span>
+                </button>
+                <button class="tab-btn" data-tab="descartadas" role="tab" aria-selected="false">
+                    Descartadas
+                    <span class="tab-badge tab-badge--red" id="badge-descartadas">0</span>
+                </button>
+                <button class="tab-btn" data-tab="visitados" role="tab" aria-selected="false">
+                    Visitados
+                    <span class="tab-badge tab-badge--gray" id="badge-visitados">0</span>
+                </button>
+                <button class="tab-btn tab-btn-historico" data-tab="historico" role="tab" aria-selected="false">
+                    Histórico de Inmuebles registrados
+                </button>
+            </nav>
+        </header>
+
+        <!-- Main Content: Properties (full width grid) -->
+        <div id="property-list" class="property-scroll-container">
+            <div id="historico-loading" class="historico-loading hidden">
+                <div class="spinner"></div>
+                <p>Cargando histórico de inmuebles...</p>
+            </div>
+            <!-- Loading State: Skeleton Cards -->
+            <div id="loading-state" class="loading-container">
+                <article class="property-card skeleton-card" aria-hidden="true">
+                    <div class="property-image-wrapper"><div class="skeleton-block skeleton-img"></div></div>
+                    <div class="property-details">
+                        <div class="skeleton-line" style="width:70%;height:16px;margin-bottom:8px"></div>
+                        <div class="skeleton-line" style="width:50%;height:12px;margin-bottom:12px"></div>
+                        <div class="skeleton-line" style="width:90%;height:12px;margin-bottom:6px"></div>
+                        <div class="skeleton-line" style="width:60%;height:12px"></div>
+                    </div>
+                </article>
+                <article class="property-card skeleton-card" aria-hidden="true">
+                    <div class="property-image-wrapper"><div class="skeleton-block skeleton-img"></div></div>
+                    <div class="property-details">
+                        <div class="skeleton-line" style="width:65%;height:16px;margin-bottom:8px"></div>
+                        <div class="skeleton-line" style="width:45%;height:12px;margin-bottom:12px"></div>
+                        <div class="skeleton-line" style="width:85%;height:12px;margin-bottom:6px"></div>
+                        <div class="skeleton-line" style="width:55%;height:12px"></div>
+                    </div>
+                </article>
+                <article class="property-card skeleton-card" aria-hidden="true">
+                    <div class="property-image-wrapper"><div class="skeleton-block skeleton-img"></div></div>
+                    <div class="property-details">
+                        <div class="skeleton-line" style="width:75%;height:16px;margin-bottom:8px"></div>
+                        <div class="skeleton-line" style="width:55%;height:12px;margin-bottom:12px"></div>
+                        <div class="skeleton-line" style="width:80%;height:12px;margin-bottom:6px"></div>
+                        <div class="skeleton-line" style="width:50%;height:12px"></div>
+                    </div>
+                </article>
+            </div>
+
+            <!-- Empty State (per-tab) -->
+            <div id="empty-state" class="success-card hidden">
+                <div class="success-icon" id="empty-icon">🎉</div>
+                <h2 id="empty-title">Sin propiedades</h2>
+                <p id="empty-desc">No hay propiedades en esta sección.</p>
+            </div>
+        </div>
+        <div id="historico-pagination" class="historico-pagination hidden">
+            <button id="historico-prev" type="button" class="hist-page-btn">Anterior</button>
+            <span id="historico-page-info" class="hist-page-info">Página 1 de 1</span>
+            <button id="historico-next" type="button" class="hist-page-btn">Siguiente</button>
+        </div>
+    </div>
+
+    <footer class="site-footer">
+        <p>&copy; HabitarInmobiliaria 2026</p>
+    </footer>
+
+    <!-- Detail Modal -->
+    <div id="detail-modal" class="modal-overlay hidden" aria-hidden="true">
+        <div class="modal-content" role="dialog" aria-modal="true">
+            <button class="modal-close" aria-label="Cerrar detalle">✕</button>
+            <div id="modal-body" class="modal-body">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Property Card Template -->
+    <template id="property-card-template">
+        <article class="property-card">
+            <div class="property-image-wrapper">
+                <img src="" alt="Foto" class="property-image">
+                <span class="price-badge"></span>
+            </div>
+            <div class="property-details">
+                <div class="property-header">
+                    <h2 class="property-title"></h2>
+                    <p class="property-location"></p>
+                </div>
+                <p class="property-description"></p>
+                <div class="property-history-meta hidden">
+                    <span class="history-state-badge"></span>
+                    <span class="history-date"></span>
+                </div>
+                <!-- Action buttons injected dynamically per tab -->
+                <div class="action-bar"></div>
+            </div>
+        </article>
+    </template>
+
+    <script src="../js/shared/api-error-handler.js" defer></script>
+    <script src="../js/vitrina/vitrina.js?v=10" defer></script>
+</body>
+
+</html>
