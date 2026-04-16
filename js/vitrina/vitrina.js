@@ -1424,18 +1424,31 @@ elTabBtns.forEach(btn => {
 // ============================================================
 async function init() {
     function decodeToken(raw) {
-        try { return atob(raw); } catch { return raw; }
+        const input = String(raw || '').trim();
+        if (!input) return '';
+
+        // Soporta Base64 estándar y Base64 URL-safe.
+        const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+
+        try {
+            return atob(padded).trim();
+        } catch {
+            return input;
+        }
     }
 
     // 1. Intentar leer desde el path: /vitrina/{token}
     const pathMatch = window.location.pathname.match(/\/vitrina\/([^/]+)/);
-    const pathToken = pathMatch ? decodeURIComponent(pathMatch[1]) : null;
+    const pathTokenRaw = pathMatch ? decodeURIComponent(pathMatch[1]) : '';
 
     // 2. Fallback a query params para compatibilidad con enlaces anteriores
     const params = new URLSearchParams(window.location.search);
-    const rawParam = params.get('t') || params.get('token');
+    const rawParam = params.get('t') || params.get('token') || '';
 
-    state.token = pathToken || (rawParam ? decodeToken(rawParam) : DEFAULT_TOKEN);
+    const pathTokenDecoded = decodeToken(pathTokenRaw);
+    const queryTokenDecoded = decodeToken(rawParam);
+    state.token = pathTokenDecoded || queryTokenDecoded || DEFAULT_TOKEN;
 
     console.log(`Vitrina token: ${state.token}`);
 
